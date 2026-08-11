@@ -141,5 +141,66 @@ export const mediaLabMigrations: Migration[] = [
       CREATE INDEX ai_usage_events_started_index ON ai_usage_events(started_at);
       CREATE INDEX ai_usage_events_project_index ON ai_usage_events(project_id, started_at);
     `
+  },
+  {
+    id: '008_guided_production',
+    sql: `
+      CREATE TABLE guide_templates (
+        id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (id, version)
+      );
+      CREATE TABLE guided_production_runs (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        template_id TEXT NOT NULL,
+        template_version INTEGER NOT NULL,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (template_id, template_version) REFERENCES guide_templates(id, version)
+      );
+      CREATE INDEX guided_production_runs_project_index ON guided_production_runs(project_id, created_at DESC);
+      CREATE TABLE guided_production_events (
+        run_id TEXT NOT NULL REFERENCES guided_production_runs(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, sequence)
+      );
+    `
+  },
+  {
+    id: '009_guided_production_integrity',
+    sql: `
+      CREATE TRIGGER guided_production_events_no_update
+      BEFORE UPDATE ON guided_production_events
+      BEGIN SELECT RAISE(ABORT, 'GUIDE_EVENTS_APPEND_ONLY'); END;
+      CREATE TRIGGER guided_production_events_no_delete
+      BEFORE DELETE ON guided_production_events
+      BEGIN SELECT RAISE(ABORT, 'GUIDE_EVENTS_APPEND_ONLY'); END;
+    `
+  },
+  {
+    id: '010_guided_production_current_run',
+    sql: `
+      DROP TRIGGER guided_production_events_no_delete;
+      ALTER TABLE guided_production_runs ADD COLUMN is_current INTEGER NOT NULL DEFAULT 0 CHECK(is_current IN (0, 1));
+      UPDATE guided_production_runs
+      SET is_current = 1
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY updated_at DESC, id DESC) AS position
+          FROM guided_production_runs
+        ) WHERE position = 1
+      );
+      CREATE UNIQUE INDEX guided_production_one_current_run_per_project
+        ON guided_production_runs(project_id) WHERE is_current = 1;
+    `
   }
 ];

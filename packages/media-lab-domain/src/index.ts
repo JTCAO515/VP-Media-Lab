@@ -4,3 +4,6 @@ export * from './assets/catalog';
 export * from './rights/render-eligibility';
 export * from './schema/content';
 export * from './schema/edit-proposal';
+export * from './guide/schemas';
+export * from './guide/state-machine';
+export * from './guide/resolve-template';

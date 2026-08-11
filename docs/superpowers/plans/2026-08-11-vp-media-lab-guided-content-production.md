@@ -259,7 +259,7 @@ git commit -m "feat: protect Model Studio configuration"
 - Produces: `WorkflowTemplateV1Schema`, `GuidedProductionRunV1Schema`, `transitionGuideRun(run, event)`, `resolveWorkflow(template, projectFacts)`, and `GuideRepository`.
 - Guarantees: fresh run per project, one active step, automatic evidence only reaches `ready_for_confirmation`, required steps cannot skip, earlier changes invalidate descendants.
 
-- [ ] **Step 1: Write the failing state-machine tests**
+- [x] **Step 1: Write the failing state-machine tests**
 
 ```ts
 it('requires operator confirmation after automatic evidence and invalidates descendants', () => {
@@ -275,13 +275,13 @@ it('requires operator confirmation after automatic evidence and invalidates desc
 
 Also test a second project receives a distinct run ID with all confirmations empty, a required step rejects `skip`, an optional step stores a non-empty reason, and blocked state resumes.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- guide-state-machine guide-repository`
 
 Expected: FAIL because guide contracts do not exist.
 
-- [ ] **Step 3: Implement schemas and pure transitions**
+- [x] **Step 3: Implement schemas and pure transitions**
 
 Use these exact states and events:
 
@@ -301,7 +301,7 @@ export const GuideEventSchema = z.discriminatedUnion('type', [
 
 Migration `005_guided_production` creates templates, runs, and append-only events. Repository transition loads the current run, applies the pure function, inserts the event, and updates the snapshot in one transaction.
 
-- [ ] **Step 4: Verify persistence across restart**
+- [x] **Step 4: Verify persistence across restart**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- guide-state-machine guide-repository database`
 
