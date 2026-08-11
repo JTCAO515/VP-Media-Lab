@@ -4,22 +4,9 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openDatabase, type MediaLabDatabase } from './storage/database';
+import { mediaLabMigrations } from './storage/migrations';
+import { upsertMediaAsset } from './storage/asset-repository';
 import type { AssetKind, MediaAssetSummary, PublicSettings } from '../shared/contracts';
-
-const migrations = [{
-  id: '001_core',
-  sql: `
-    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS media_assets (
-      id TEXT PRIMARY KEY, asset_kind TEXT NOT NULL CHECK(asset_kind IN ('owned', 'reference')),
-      name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, content_hash TEXT NOT NULL,
-      rights_status TEXT NOT NULL, created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS local_jobs (
-      id TEXT PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL
-    );
-  `
-}];
 
 let database: MediaLabDatabase;
 
@@ -100,14 +87,9 @@ function registerIpc(): void {
       if (!file.isFile()) continue;
       const contentHash = await hashFile(path);
       const now = new Date().toISOString();
-      const id = randomUUID();
       const name = path.split(/[\\/]/).pop() ?? 'untitled';
-      database.run(
-        'INSERT INTO media_assets (id, asset_kind, name, path, content_hash, rights_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET asset_kind = excluded.asset_kind, content_hash = excluded.content_hash;',
-        [id, input.assetKind, name, path, contentHash, 'unknown', now]
-      );
-      const row = assetRows(input.assetKind).find((asset) => asset.path === path);
-      if (row) imported.push(row);
+      const asset = upsertMediaAsset(database, { id: randomUUID(), assetKind: input.assetKind, name, path, contentHash, now });
+      imported.push(asset);
     }
     return imported;
   });
@@ -122,7 +104,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
-  database = await openDatabase({ filePath: join(app.getPath('userData'), 'media-lab.sqlite'), migrations });
+  database = await openDatabase({ filePath: join(app.getPath('userData'), 'media-lab.sqlite'), migrations: mediaLabMigrations });
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
