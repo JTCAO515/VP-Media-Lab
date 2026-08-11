@@ -33,11 +33,13 @@ export function validateEditProposalAgainstStoryboard(
   const storyboard = StoryboardV1Schema.parse(storyboardInput);
   if (proposal.projectId !== storyboard.projectId) throw new Error('PROJECT_MISMATCH');
 
-  const beatsById = new Map(storyboard.beats.map((beat) => [beat.id, beat]));
+  const evolvingBeats = storyboard.beats.map((beat) => ({ ...beat }));
   for (const operation of proposal.operations) {
     if (operation.type === 'set_music_volume') continue;
-    const beat = beatsById.get(operation.beatId);
-    if (!beat) throw new Error('UNKNOWN_BEAT');
+    if (operation.type === 'regenerate_beat') throw new Error('REGENERATE_REQUIRES_GENERATED_PATCH');
+    const beatIndex = evolvingBeats.findIndex((candidate) => candidate.id === operation.beatId);
+    if (beatIndex < 0) throw new Error('UNKNOWN_BEAT');
+    const beat = evolvingBeats[beatIndex];
     if (operation.type === 'trim_beat' && (operation.startMs >= operation.endMs || operation.endMs > beat.durationMs)) {
       throw new Error('INVALID_TRIM_RANGE');
     }
@@ -47,6 +49,53 @@ export function validateEditProposalAgainstStoryboard(
       if (rights.assetKind === 'reference') throw new Error('REFERENCE_NOT_RENDERABLE');
       if (!isAssetRenderEligible(rights, today)) throw new Error('ASSET_NOT_RENDERABLE');
     }
+    if (operation.type === 'trim_beat') {
+      beat.sourceStartMs = (beat.sourceStartMs ?? 0) + operation.startMs;
+      beat.durationMs = operation.endMs - operation.startMs;
+    }
+    if (operation.type === 'replace_asset') beat.selectedAssetId = operation.assetId;
+    if (operation.type === 'update_caption') beat.onScreenText = operation.onScreenText;
+    if (operation.type === 'reorder_beat') {
+      evolvingBeats.splice(beatIndex, 1);
+      evolvingBeats.splice(Math.min(operation.order, evolvingBeats.length), 0, beat);
+    }
   }
   return proposal;
+}
+
+export function applyEditProposal(
+  proposalInput: unknown,
+  storyboardInput: StoryboardV1,
+  assetRights: Record<string, RenderAssetRights>,
+  today: string
+): StoryboardV1 {
+  const proposal = validateEditProposalAgainstStoryboard(proposalInput, storyboardInput, assetRights, today);
+  const storyboard = StoryboardV1Schema.parse(storyboardInput);
+  let beats = storyboard.beats.map((beat) => ({ ...beat }));
+  let musicVolume = storyboard.musicVolume;
+
+  for (const operation of proposal.operations) {
+    if (operation.type === 'set_music_volume') {
+      musicVolume = operation.volume;
+      continue;
+    }
+    if (operation.type === 'regenerate_beat') throw new Error('REGENERATE_REQUIRES_GENERATED_PATCH');
+
+    const beatIndex = beats.findIndex((candidate) => candidate.id === operation.beatId);
+    if (beatIndex < 0) throw new Error('UNKNOWN_BEAT');
+    const beat = beats[beatIndex];
+    if (operation.type === 'update_caption') beat.onScreenText = operation.onScreenText;
+    if (operation.type === 'replace_asset') beat.selectedAssetId = operation.assetId;
+    if (operation.type === 'trim_beat') {
+      beat.sourceStartMs = (beat.sourceStartMs ?? 0) + operation.startMs;
+      beat.durationMs = operation.endMs - operation.startMs;
+    }
+    if (operation.type === 'reorder_beat') {
+      beats.splice(beatIndex, 1);
+      beats.splice(Math.min(operation.order, beats.length), 0, beat);
+    }
+  }
+
+  beats = beats.map((beat, order) => ({ ...beat, order }));
+  return StoryboardV1Schema.parse({ ...storyboard, musicVolume, beats });
 }

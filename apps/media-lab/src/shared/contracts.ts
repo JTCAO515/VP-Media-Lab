@@ -1,4 +1,35 @@
 import type { EditProposalV1 } from '@visepanda/media-lab-domain';
+import { z } from 'zod';
+
+const IdSchema = z.string().trim().min(1).max(200);
+
+export const ProjectCreateInputSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  language: z.enum(['en', 'zh', 'other'])
+}).strict();
+export const ProjectGetInputSchema = z.object({ id: IdSchema }).strict();
+export const ChatProposeInputSchema = z.object({
+  projectId: IdSchema,
+  message: z.string().trim().min(1).max(2_000)
+}).strict();
+export const ChatConfirmInputSchema = z.object({
+  projectId: IdSchema,
+  proposalId: IdSchema,
+  expectedRevision: z.number().int().nonnegative()
+}).strict();
+export const ChatDiscardInputSchema = ChatConfirmInputSchema;
+export const RestoreVersionInputSchema = z.object({
+  projectId: IdSchema,
+  revision: z.number().int().nonnegative(),
+  restoreId: IdSchema
+}).strict();
+
+export type ProjectCreateInput = z.infer<typeof ProjectCreateInputSchema>;
+export type ProjectGetInput = z.infer<typeof ProjectGetInputSchema>;
+export type ChatProposeInput = z.infer<typeof ChatProposeInputSchema>;
+export type ChatConfirmInput = z.infer<typeof ChatConfirmInputSchema>;
+export type ChatDiscardInput = z.infer<typeof ChatDiscardInputSchema>;
+export type RestoreVersionInput = z.infer<typeof RestoreVersionInputSchema>;
 
 export type AssetKind = 'owned' | 'reference';
 
@@ -32,6 +63,7 @@ export interface ProjectSummary {
 }
 
 export interface ProjectStoryboard extends ProjectSummary {
+  revision: number;
   storyboard: {
     schemaVersion: 1;
     id: string;
@@ -39,6 +71,11 @@ export interface ProjectStoryboard extends ProjectSummary {
     language: 'en' | 'zh' | 'other';
     beats: Array<{ id: string; order: number; durationMs: number; purpose: string; onScreenText: string; selectedAssetId: string | null }>;
   };
+}
+
+export interface PendingEditProposalView {
+  proposal: EditProposalV1;
+  baseRevision: number;
 }
 
 export interface VpMediaApi {
@@ -54,11 +91,14 @@ export interface VpMediaApi {
   };
   jobs: { list(): Promise<LocalJobSummary[]> };
   projects: {
-    create(input: { title: string; language: 'en' | 'zh' | 'other' }): Promise<ProjectSummary>;
+    create(input: ProjectCreateInput): Promise<ProjectSummary>;
     list(): Promise<ProjectSummary[]>;
-    get(input: { id: string }): Promise<ProjectStoryboard | null>;
+    get(input: ProjectGetInput): Promise<ProjectStoryboard | null>;
+    restoreVersion(input: RestoreVersionInput): Promise<ProjectStoryboard>;
   };
   chat: {
-    propose(input: { projectId: string; message: string }): Promise<EditProposalV1>;
+    propose(input: ChatProposeInput): Promise<PendingEditProposalView>;
+    confirm(input: ChatConfirmInput): Promise<ProjectStoryboard>;
+    discard(input: ChatDiscardInput): Promise<{ discarded: true }>;
   };
 }

@@ -6,9 +6,29 @@ import { join } from 'node:path';
 import { openDatabase, type MediaLabDatabase } from './storage/database';
 import { mediaLabMigrations } from './storage/migrations';
 import { upsertMediaAsset } from './storage/asset-repository';
-import { createProjectWithStoryboard, getProjectWithStoryboard } from './storage/project-repository';
+import {
+  confirmPendingEditProposal,
+  createProjectWithStoryboard,
+  discardPendingEditProposal,
+  getProjectWithStoryboard,
+  pruneExpiredEditProposals,
+  restoreStoryboardVersion,
+  storePendingEditProposal
+} from './storage/project-repository';
 import { QwenEditProvider } from './providers/qwen-edit-provider';
-import type { AssetKind, MediaAssetSummary, ProjectStoryboard, ProjectSummary, PublicSettings } from '../shared/contracts';
+import {
+  ChatConfirmInputSchema,
+  ChatDiscardInputSchema,
+  ChatProposeInputSchema,
+  ProjectCreateInputSchema,
+  ProjectGetInputSchema,
+  RestoreVersionInputSchema,
+  type AssetKind,
+  type MediaAssetSummary,
+  type ProjectStoryboard,
+  type ProjectSummary,
+  type PublicSettings
+} from '../shared/contracts';
 
 let database: MediaLabDatabase;
 
@@ -65,6 +85,7 @@ function toProjectStoryboard(project: NonNullable<ReturnType<typeof getProjectWi
     id: project.id,
     title: project.title,
     createdAt: project.createdAt,
+    revision: project.revision,
     storyboard: {
       schemaVersion: project.storyboard.schemaVersion,
       id: project.storyboard.id,
@@ -85,7 +106,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1040,
     minHeight: 700,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -140,10 +161,8 @@ function registerIpc(): void {
   ipcMain.handle('vp-media:jobs:list', () => database.all('SELECT id, kind, state, created_at FROM local_jobs ORDER BY created_at DESC;').map((row) => ({
     id: String(row.id), kind: String(row.kind), state: String(row.state), createdAt: String(row.created_at)
   })));
-  ipcMain.handle('vp-media:projects:create', (_event, input: { title: string; language: 'en' | 'zh' | 'other' }) => {
-    if (!input || typeof input.title !== 'string' || !['en', 'zh', 'other'].includes(input.language) || input.title.trim().length < 3 || input.title.trim().length > 120) {
-      throw new Error('INVALID_INPUT');
-    }
+  ipcMain.handle('vp-media:projects:create', (_event, untrustedInput: unknown) => {
+    const input = ProjectCreateInputSchema.parse(untrustedInput);
     const projectId = randomUUID();
     const now = new Date().toISOString();
     const project = createProjectWithStoryboard(database, {
@@ -160,28 +179,56 @@ function registerIpc(): void {
     return { id: project.id, title: project.title, createdAt: project.createdAt };
   });
   ipcMain.handle('vp-media:projects:list', () => projectRows());
-  ipcMain.handle('vp-media:projects:get', (_event, input: { id: string }) => {
-    if (!input || typeof input.id !== 'string' || input.id.length === 0) throw new Error('INVALID_INPUT');
+  ipcMain.handle('vp-media:projects:get', (_event, untrustedInput: unknown) => {
+    const input = ProjectGetInputSchema.parse(untrustedInput);
     const project = getProjectWithStoryboard(database, input.id);
     return project ? toProjectStoryboard(project) : null;
   });
-  ipcMain.handle('vp-media:chat:propose', async (_event, input: { projectId: string; message: string }) => {
-    if (!input || typeof input.projectId !== 'string' || typeof input.message !== 'string' || input.message.trim().length < 1 || input.message.length > 2_000) {
-      throw new Error('INVALID_INPUT');
-    }
+  ipcMain.handle('vp-media:projects:restore-version', (_event, untrustedInput: unknown) => {
+    const input = RestoreVersionInputSchema.parse(untrustedInput);
+    const result = restoreStoryboardVersion(database, { ...input, restoredAt: new Date().toISOString() });
+    return toProjectStoryboard(result.project);
+  });
+  ipcMain.handle('vp-media:chat:propose', async (_event, untrustedInput: unknown) => {
+    const input = ChatProposeInputSchema.parse(untrustedInput);
     const project = getProjectWithStoryboard(database, input.projectId);
     if (!project) throw new Error('PROJECT_NOT_FOUND');
     const provider = new QwenEditProvider({ apiKey: readConfiguredAiKey() });
-    return provider.proposeEdit({
+    const proposed = await provider.proposeEdit({
       message: input.message.trim(), storyboard: project.storyboard, assetRights: assetRightsById(),
       today: new Date().toISOString().slice(0, 10)
     });
+    const pending = storePendingEditProposal(database, {
+      proposal: { ...proposed, id: randomUUID(), projectId: project.id },
+      expectedRevision: project.revision,
+      storedAt: new Date().toISOString()
+    });
+    return { proposal: pending.proposal, baseRevision: pending.baseRevision };
+  });
+  ipcMain.handle('vp-media:chat:confirm', (_event, untrustedInput: unknown) => {
+    const input = ChatConfirmInputSchema.parse(untrustedInput);
+    const now = new Date().toISOString();
+    const result = confirmPendingEditProposal(database, {
+      projectId: input.projectId,
+      proposalId: input.proposalId,
+      expectedRevision: input.expectedRevision,
+      assetRights: assetRightsById(),
+      today: now.slice(0, 10),
+      appliedAt: now
+    });
+    return toProjectStoryboard(result.project);
+  });
+  ipcMain.handle('vp-media:chat:discard', (_event, untrustedInput: unknown) => {
+    const input = ChatDiscardInputSchema.parse(untrustedInput);
+    discardPendingEditProposal(database, { ...input, discardedAt: new Date().toISOString() });
+    return { discarded: true as const };
   });
   ipcMain.handle('vp-media:open-path', async (_event, path: string) => shell.openPath(path));
 }
 
 app.whenReady().then(async () => {
   database = await openDatabase({ filePath: join(app.getPath('userData'), 'media-lab.sqlite'), migrations: mediaLabMigrations });
+  pruneExpiredEditProposals(database, new Date(Date.now() - 30 * 24 * 60 * 60 * 1_000).toISOString());
   registerIpc();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

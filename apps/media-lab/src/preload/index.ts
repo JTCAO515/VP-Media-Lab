@@ -16,9 +16,14 @@ const api: VpMediaApi = {
   projects: {
     create: (input) => ipcRenderer.invoke('vp-media:projects:create', input),
     list: () => ipcRenderer.invoke('vp-media:projects:list'),
-    get: (input) => ipcRenderer.invoke('vp-media:projects:get', input)
+    get: (input) => ipcRenderer.invoke('vp-media:projects:get', input),
+    restoreVersion: (input) => ipcRenderer.invoke('vp-media:projects:restore-version', input)
   },
-  chat: { propose: (input) => ipcRenderer.invoke('vp-media:chat:propose', input) }
+  chat: {
+    propose: (input) => ipcRenderer.invoke('vp-media:chat:propose', input),
+    confirm: (input) => ipcRenderer.invoke('vp-media:chat:confirm', input),
+    discard: (input) => ipcRenderer.invoke('vp-media:chat:discard', input)
+  }
 };
 
 contextBridge.exposeInMainWorld('vpMedia', Object.freeze(api));

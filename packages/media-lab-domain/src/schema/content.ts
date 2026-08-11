@@ -29,6 +29,7 @@ export const PatternCardV1Schema = z.object({
 const StoryboardBeatSchema = z.object({
   id: IdSchema,
   order: z.number().int().nonnegative(),
+  sourceStartMs: z.number().int().nonnegative().optional(),
   durationMs: z.number().int().positive(),
   purpose: z.string().min(1),
   originalScript: z.string(),
@@ -45,6 +46,7 @@ export const StoryboardV1Schema = z.object({
   projectId: IdSchema,
   evidencePackId: IdSchema.nullable(),
   language: z.enum(['en', 'zh', 'other']),
+  musicVolume: z.number().min(0).max(1).optional(),
   beats: z.array(StoryboardBeatSchema).min(1),
   factualReview: z.enum(['not_required', 'required', 'approved']),
   originalityReview: z.enum(['required', 'approved', 'rejected'])

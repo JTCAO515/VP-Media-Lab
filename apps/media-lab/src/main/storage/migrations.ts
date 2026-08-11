@@ -45,5 +45,78 @@ export const mediaLabMigrations: Migration[] = [
         updated_at TEXT NOT NULL
       );
     `
+  },
+  {
+    id: '004_storyboard_versions',
+    sql: `
+      ALTER TABLE storyboards ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE storyboard_versions (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        proposal_id TEXT NULL,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (project_id, revision),
+        UNIQUE (project_id, proposal_id)
+      );
+      CREATE INDEX storyboard_versions_project_index ON storyboard_versions(project_id, revision);
+    `
+  },
+  {
+    id: '004b_global_proposal_ids',
+    sql: `
+      ALTER TABLE storyboard_versions ADD COLUMN legacy_proposal_id TEXT NULL;
+      UPDATE storyboard_versions
+        SET legacy_proposal_id = proposal_id, proposal_id = NULL
+        WHERE proposal_id IS NOT NULL
+          AND rowid NOT IN (
+            SELECT MIN(rowid) FROM storyboard_versions
+            WHERE proposal_id IS NOT NULL GROUP BY proposal_id
+          );
+    `
+  },
+  {
+    id: '005_pending_edit_proposals',
+    sql: `
+      CREATE UNIQUE INDEX storyboard_versions_proposal_id_unique
+        ON storyboard_versions(proposal_id) WHERE proposal_id IS NOT NULL;
+      CREATE TABLE pending_edit_proposals (
+        proposal_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        base_revision INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'confirmed')),
+        created_at TEXT NOT NULL,
+        confirmed_at TEXT NULL
+      );
+      CREATE INDEX pending_edit_proposals_project_index
+        ON pending_edit_proposals(project_id, status, created_at);
+    `
+  },
+  {
+    id: '006_discarded_edit_proposals',
+    sql: `
+      CREATE TABLE pending_edit_proposals_v2 (
+        proposal_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        base_revision INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'confirmed', 'discarded')),
+        created_at TEXT NOT NULL,
+        confirmed_at TEXT NULL,
+        discarded_at TEXT NULL
+      );
+      INSERT INTO pending_edit_proposals_v2
+        (proposal_id, project_id, base_revision, payload, payload_hash, status, created_at, confirmed_at, discarded_at)
+        SELECT proposal_id, project_id, base_revision, payload, payload_hash, status, created_at, confirmed_at, NULL
+        FROM pending_edit_proposals;
+      DROP TABLE pending_edit_proposals;
+      ALTER TABLE pending_edit_proposals_v2 RENAME TO pending_edit_proposals;
+      CREATE INDEX pending_edit_proposals_project_index
+        ON pending_edit_proposals(project_id, status, created_at);
+    `
   }
 ];

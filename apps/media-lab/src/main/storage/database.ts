@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import initSqlJs, { type Database, type SqlValue } from 'sql.js';
+import {
+  DatabaseSync,
+  type SQLInputValue,
+  type SQLOutputValue,
+  type StatementResultingChanges
+} from 'node:sqlite';
 
 export interface Migration {
   id: string;
@@ -17,38 +22,37 @@ export interface MediaLabDatabase {
   appliedMigrationIds(): string[];
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;
-  all(statement: string, parameters?: SqlValue[]): Array<Record<string, SqlValue>>;
-  run(statement: string, parameters?: SqlValue[]): void;
-  close(): Promise<void>;
-}
-
-async function readDatabase(filePath: string): Promise<Uint8Array | undefined> {
-  try {
-    return await readFile(filePath);
-  } catch (error: unknown) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return undefined;
-    throw error;
-  }
+  all(statement: string, parameters?: SQLInputValue[]): Array<Record<string, SQLOutputValue>>;
+  run(statement: string, parameters?: SQLInputValue[]): StatementResultingChanges;
+  transaction<T>(work: () => T): T;
+  close(): void;
 }
 
 function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
 }
 
-function scalar(database: Database, statement: string, parameters: SqlValue[] = []): string | null {
-  const result = database.exec(statement, parameters);
-  if (result.length === 0 || result[0].values.length === 0) return null;
-  return String(result[0].values[0][0]);
+function scalar(database: DatabaseSync, statement: string, parameters: SQLInputValue[] = []): string | null {
+  const row = database.prepare(statement).get(...parameters);
+  if (!row) return null;
+  const value = Object.values(row)[0];
+  return value === null || value === undefined ? null : String(value);
 }
 
 export async function openDatabase({ filePath, migrations }: OpenDatabaseInput): Promise<MediaLabDatabase> {
-  const SQL = await initSqlJs();
-  const bytes = await readDatabase(filePath);
-  const database = new SQL.Database(bytes);
-  database.run('PRAGMA foreign_keys = ON;');
-  database.run('CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, checksum TEXT NOT NULL);');
+  await mkdir(dirname(filePath), { recursive: true });
+  const database = new DatabaseSync(filePath, {
+    enableDoubleQuotedStringLiterals: false,
+    enableForeignKeyConstraints: true,
+    timeout: 5_000
+  });
+  let transactionDepth = 0;
 
-  database.run('BEGIN IMMEDIATE;');
+  database.exec('PRAGMA journal_mode = WAL;');
+  database.exec('PRAGMA synchronous = FULL;');
+  database.exec('CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, checksum TEXT NOT NULL);');
+
+  database.exec('BEGIN IMMEDIATE;');
   try {
     for (const migration of migrations) {
       const acceptedChecksum = scalar(database, 'SELECT checksum FROM schema_migrations WHERE id = ?;', [migration.id]);
@@ -57,34 +61,59 @@ export async function openDatabase({ filePath, migrations }: OpenDatabaseInput):
         throw new Error(`Migration checksum changed: ${migration.id}`);
       }
       if (acceptedChecksum === null) {
-        database.run(migration.sql);
-        database.run('INSERT INTO schema_migrations (id, checksum) VALUES (?, ?);', [migration.id, nextChecksum]);
+        database.exec(migration.sql);
+        database.prepare('INSERT INTO schema_migrations (id, checksum) VALUES (?, ?);').run(migration.id, nextChecksum);
       }
     }
-    database.run('COMMIT;');
+    database.exec('COMMIT;');
   } catch (error) {
-    database.run('ROLLBACK;');
+    database.exec('ROLLBACK;');
     database.close();
     throw error;
   }
 
-  return {
-    appliedMigrationIds: () => database.exec('SELECT id FROM schema_migrations ORDER BY id;')[0]?.values.map(([id]) => String(id)) ?? [],
-    getSetting: (key) => scalar(database, 'SELECT value FROM settings WHERE key = ?;', [key]),
-    setSetting: (key, value) => database.run(
-      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;',
-      [key, value]
-    ),
-    all: (statement, parameters = []) => {
-      const result = database.exec(statement, parameters)[0];
-      if (!result) return [];
-      return result.values.map((values) => Object.fromEntries(result.columns.map((column, index) => [column, values[index]])));
-    },
-    run: (statement, parameters = []) => database.run(statement, parameters),
-    close: async () => {
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, database.export());
-      database.close();
+  const transaction = <T>(work: () => T): T => {
+    if (transactionDepth > 0) {
+      const savepoint = `vp_nested_${transactionDepth}`;
+      database.exec(`SAVEPOINT ${savepoint};`);
+      transactionDepth += 1;
+      try {
+        const result = work();
+        database.exec(`RELEASE SAVEPOINT ${savepoint};`);
+        return result;
+      } catch (error) {
+        database.exec(`ROLLBACK TO SAVEPOINT ${savepoint};`);
+        database.exec(`RELEASE SAVEPOINT ${savepoint};`);
+        throw error;
+      } finally {
+        transactionDepth -= 1;
+      }
     }
+    database.exec('BEGIN IMMEDIATE;');
+    transactionDepth += 1;
+    try {
+      const result = work();
+      database.exec('COMMIT;');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK;');
+      throw error;
+    } finally {
+      transactionDepth -= 1;
+    }
+  };
+
+  return {
+    appliedMigrationIds: () => database.prepare('SELECT id FROM schema_migrations ORDER BY id;').all().map((row) => String(row.id)),
+    getSetting: (key) => scalar(database, 'SELECT value FROM settings WHERE key = ?;', [key]),
+    setSetting: (key, value) => {
+      database.prepare(
+        'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;'
+      ).run(key, value);
+    },
+    all: (statement, parameters = []) => database.prepare(statement).all(...parameters),
+    run: (statement, parameters = []) => database.prepare(statement).run(...parameters),
+    transaction,
+    close: () => database.close()
   };
 }

@@ -6,7 +6,7 @@
 
 **Architecture:** Electron renderer remains sandboxed behind a frozen typed preload API. Main process owns a durable SQLite database, OS-protected secrets, authorized paths, provider calls, and persistent jobs; focused workers own FFmpeg and static rendering. The framework-independent domain package owns versioned Zod schemas, rights/evidence rules, deterministic edit application, workflow state machines, and format validators.
 
-**Tech Stack:** Electron 37, React 18, TypeScript strict, Vite/electron-vite, Zod 3, better-sqlite3, FFmpeg/ffprobe, Sharp with SVG templates, Alibaba Cloud Model Studio through native `fetch`, Vitest, Testing Library, Playwright, electron-builder.
+**Tech Stack:** Electron 43, React 18, TypeScript strict, Vite/electron-vite, Zod 3, Node built-in `node:sqlite`, FFmpeg/ffprobe, Sharp with SVG templates, Alibaba Cloud Model Studio through native `fetch`, Vitest, Testing Library, Playwright, electron-builder.
 
 ## Global Constraints
 
@@ -76,13 +76,13 @@ docs/media-lab/
 - Produces: `MediaLabDatabase.transaction<T>(work: () => T): T`, `applyConfirmedEditProposal(database, input)`, `restoreStoryboardVersion(database, input)`, and IPC methods `chat.confirm` and `projects.restoreVersion`.
 - Guarantees: committed writes survive process termination; every confirmed proposal creates a version; previous versions remain readable; applying a proposal is idempotent by proposal ID.
 
-- [ ] **Step 1: Run the existing red tests and record the intended failure**
+- [x] **Step 1: Run the existing red tests and record the intended failure**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- edit-proposal database`
 
 Expected: edit-proposal cases pass; database suite fails because `004_storyboard_versions` and `applyConfirmedEditProposal` do not exist.
 
-- [ ] **Step 2: Add a failing restart/idempotency test**
+- [x] **Step 2: Add a failing restart/idempotency test**
 
 Add to `apps/media-lab/tests/database.test.ts`:
 
@@ -106,15 +106,15 @@ it('does not apply one proposal twice and keeps the accepted revision after rest
 
 Keep `projectFixture` and `confirmedCaptionFixture` as file-local test builders returning the exact existing project/proposal shapes.
 
-- [ ] **Step 3: Verify the new test fails for missing durable/version behavior**
+- [x] **Step 3: Verify the new test fails for missing durable/version behavior**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- database`
 
 Expected: FAIL before the idempotency/restart assertions complete.
 
-- [ ] **Step 4: Replace sql.js with real durable SQLite and implement revision storage**
+- [x] **Step 4: Replace sql.js with real durable SQLite and implement revision storage**
 
-Install: `npm.cmd --prefix apps\media-lab install better-sqlite3@^12.2.0 && npm.cmd --prefix apps\media-lab uninstall sql.js @types/sql.js`
+Use Electron's bundled Node runtime and its built-in `node:sqlite` adapter; remove `sql.js` and `@types/sql.js` after the adapter tests pass. This avoids a native add-on build dependency while retaining a real file-backed SQLite connection.
 
 Expose this database contract in `database.ts`:
 
@@ -130,13 +130,13 @@ export interface MediaLabDatabase {
 }
 ```
 
-Open better-sqlite3 with `foreign_keys = ON`, `journal_mode = WAL`, and `synchronous = FULL`. Migration `004_storyboard_versions` adds `revision INTEGER NOT NULL DEFAULT 0` to `storyboards` and creates:
+Open `node:sqlite` with `foreign_keys = ON`, `journal_mode = WAL`, and `synchronous = FULL`. Migration `004_storyboard_versions` adds `revision INTEGER NOT NULL DEFAULT 0` to `storyboards` and creates:
 
 ```sql
 CREATE TABLE storyboard_versions (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   revision INTEGER NOT NULL,
-  proposal_id TEXT NULL UNIQUE,
+  proposal_id TEXT NULL,
   schema_version INTEGER NOT NULL,
   payload TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -146,14 +146,17 @@ CREATE TABLE storyboard_versions (
 
 `applyConfirmedEditProposal` must validate first, insert revision zero if absent, reject an existing proposal ID, insert the resulting version, and update `storyboards` inside one transaction. `restoreStoryboardVersion` creates a new head revision containing the selected historical payload; it never deletes later history.
 
-- [ ] **Step 5: Add validated confirmation IPC and renderer-facing contracts**
+Migration `004b_global_proposal_ids` preserves any duplicate legacy ID in `legacy_proposal_id` and clears the duplicate active ID before the global partial unique index is created. Migration `005_pending_edit_proposals` persists the exact main-owned proposal payload, SHA-256 hash, source revision, and confirmation state. Migration `006_discarded_edit_proposals` adds terminal discard state. A proposal that finishes after its source revision changed is rejected; confirmation and discard accept only project ID, proposal ID, and expected revision. Pending and settled proposal records expire after 30 days; project switching explicitly discards the proposal currently under review.
+
+- [x] **Step 5: Add validated confirmation IPC and renderer-facing contracts**
 
 Add Zod IPC input schemas for proposal confirmation and restore. Preload exposes only:
 
 ```ts
 chat: {
-  propose(input: ChatProposeInput): Promise<EditProposalV1>;
+  propose(input: ChatProposeInput): Promise<PendingEditProposalView>;
   confirm(input: ChatConfirmInput): Promise<ProjectStoryboard>;
+  discard(input: ChatDiscardInput): Promise<{ discarded: true }>;
 };
 projects: {
   create(input: ProjectCreateInput): Promise<ProjectSummary>;
@@ -163,7 +166,7 @@ projects: {
 };
 ```
 
-- [ ] **Step 6: Run focused and broad verification**
+- [x] **Step 6: Run focused and broad verification**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- edit-proposal database`
 
