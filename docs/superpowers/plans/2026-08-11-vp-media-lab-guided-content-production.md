@@ -176,7 +176,7 @@ Run: `npm.cmd --prefix apps\media-lab run test && npm.cmd --prefix apps\media-la
 
 Expected: all commands exit 0.
 
-- [ ] **Step 7: Commit the reconciled slice**
+- [x] **Step 7: Commit the reconciled slice**
 
 ```powershell
 git add apps/media-lab/package.json apps/media-lab/package-lock.json apps/media-lab/src/main apps/media-lab/src/preload apps/media-lab/src/shared apps/media-lab/tests/database.test.ts apps/media-lab/tests/edit-proposal.test.ts packages/media-lab-domain/src/schema
