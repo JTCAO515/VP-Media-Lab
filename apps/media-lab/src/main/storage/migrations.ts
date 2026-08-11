@@ -202,5 +202,21 @@ export const mediaLabMigrations: Migration[] = [
       CREATE UNIQUE INDEX guided_production_one_current_run_per_project
         ON guided_production_runs(project_id) WHERE is_current = 1;
     `
+  },
+  {
+    id: '011_local_jobs_v2',
+    sql: `
+      ALTER TABLE local_jobs ADD COLUMN payload TEXT NOT NULL DEFAULT '{}';
+      ALTER TABLE local_jobs ADD COLUMN progress INTEGER NOT NULL DEFAULT 0 CHECK(progress BETWEEN 0 AND 100);
+      ALTER TABLE local_jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE local_jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3;
+      ALTER TABLE local_jobs ADD COLUMN started_at TEXT NULL;
+      ALTER TABLE local_jobs ADD COLUMN finished_at TEXT NULL;
+      ALTER TABLE local_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK(cancel_requested IN (0, 1));
+      ALTER TABLE local_jobs ADD COLUMN error_code TEXT NULL;
+      ALTER TABLE local_jobs ADD COLUMN dedupe_key TEXT NULL;
+      CREATE UNIQUE INDEX local_jobs_dedupe_key_unique ON local_jobs(dedupe_key) WHERE dedupe_key IS NOT NULL;
+      CREATE INDEX local_jobs_claim_index ON local_jobs(state, created_at);
+    `
   }
 ];
