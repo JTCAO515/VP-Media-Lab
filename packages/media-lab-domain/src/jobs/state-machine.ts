@@ -18,6 +18,7 @@ export interface LocalJob {
 
 export type LocalJobEvent =
   | { type: 'start' }
+  | { type: 'recover' }
   | { type: 'requestCancel' }
   | { type: 'cancel' }
   | { type: 'retry' };
@@ -25,6 +26,10 @@ export type LocalJobEvent =
 export function transitionJob(job: LocalJob, event: LocalJobEvent, now: string): LocalJob {
   if (event.type === 'start' && job.state === 'queued') {
     return { ...job, state: 'running', startedAt: now };
+  }
+
+  if (event.type === 'recover' && (job.state === 'running' || job.state === 'cancel_requested')) {
+    return { ...job, state: 'queued', startedAt: undefined };
   }
 
   if (event.type === 'requestCancel' && job.state === 'running') {
