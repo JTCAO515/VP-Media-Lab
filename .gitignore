@@ -1,0 +1,14 @@
+node_modules/
+apps/media-lab/node_modules/
+apps/media-lab/out/
+apps/media-lab/dist/
+apps/media-lab/release/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+.env.*
+!*.example
+media-lab-cache/
+media-lab-output/

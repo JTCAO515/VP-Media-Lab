@@ -1,0 +1,12 @@
+{
+  "name": "visepanda",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "npm --prefix apps/media-lab run build",
+    "dev": "npm --prefix apps/media-lab run dev",
+    "lint": "npm --prefix apps/media-lab run lint",
+    "test": "npm --prefix apps/media-lab run test",
+    "typecheck": "npm --prefix apps/media-lab run typecheck"
+  }
+}
