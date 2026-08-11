@@ -10,4 +10,14 @@ export function enqueueLocalJob(database: MediaLabDatabase, input: { id: string;
 
 export function reconcileInterruptedJobs(database: MediaLabDatabase): number { return Number(database.run("UPDATE local_jobs SET state = 'queued', started_at = NULL WHERE state IN ('running', 'cancel_requested');").changes); }
 
+export function claimNextLocalJob(database: MediaLabDatabase, startedAt: string): StoredLocalJob | null {
+  return database.transaction(() => {
+    const candidate = database.all("SELECT id FROM local_jobs WHERE state = 'queued' AND cancel_requested = 0 ORDER BY created_at, id LIMIT 1;")[0];
+    if (!candidate) return null;
+    const result = database.run("UPDATE local_jobs SET state = 'running', started_at = ? WHERE id = ? AND state = 'queued' AND cancel_requested = 0;", [startedAt, String(candidate.id)]);
+    if (Number(result.changes) !== 1) return null;
+    return row(database.all('SELECT * FROM local_jobs WHERE id = ?;', [String(candidate.id)])[0]!);
+  });
+}
+
 export function requestCancelLocalJob(database: MediaLabDatabase, id: string): boolean { return Number(database.run("UPDATE local_jobs SET state = 'cancel_requested', cancel_requested = 1 WHERE id = ? AND state IN ('queued', 'running');", [id]).changes) === 1; }

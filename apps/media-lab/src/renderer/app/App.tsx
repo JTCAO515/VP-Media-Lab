@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { GuidedProductionRunV1 } from '@visepanda/media-lab-domain';
 import type { AssetKind, MediaAssetSummary, PendingEditProposalView, ProjectStoryboard, ProjectSummary, ProviderConnectionTestResult, PublicSettings } from '../../shared/contracts';
 import { describeEditProposal } from './edit-proposal-view';
 import { GuideStepView } from '../features/guide/GuideStepView';
@@ -55,7 +56,7 @@ function Create(): JSX.Element {
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState<'en' | 'zh' | 'other'>('en');
   const [created, setCreated] = useState<ProjectSummary | null>(null);
-  const [guide, setGuide] = useState<import('@visepanda/media-lab-domain').GuidedProductionRunV1 | null>(null);
+  const [guide, setGuide] = useState<GuidedProductionRunV1 | null>(null);
   const [creating, setCreating] = useState(false);
   const create = async () => {
     setCreating(true);
