@@ -16,11 +16,27 @@ export interface LocalJob {
   finishedAt?: string;
 }
 
-export type LocalJobEvent = { type: 'start' };
+export type LocalJobEvent =
+  | { type: 'start' }
+  | { type: 'requestCancel' }
+  | { type: 'cancel' }
+  | { type: 'retry' };
 
 export function transitionJob(job: LocalJob, event: LocalJobEvent, now: string): LocalJob {
   if (event.type === 'start' && job.state === 'queued') {
     return { ...job, state: 'running', startedAt: now };
+  }
+
+  if (event.type === 'requestCancel' && job.state === 'running') {
+    return { ...job, state: 'cancel_requested' };
+  }
+
+  if (event.type === 'cancel' && job.state === 'cancel_requested') {
+    return { ...job, state: 'canceled', finishedAt: now };
+  }
+
+  if (event.type === 'retry' && job.state === 'failed' && job.attempt < job.maxAttempts) {
+    return { ...job, state: 'queued', attempt: job.attempt + 1, startedAt: undefined, finishedAt: undefined };
   }
 
   throw new Error(`Invalid job transition: ${job.state} -> ${event.type}`);

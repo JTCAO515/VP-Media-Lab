@@ -21,4 +21,35 @@ describe('LocalJob state machine', () => {
       )
     ).toThrow('Invalid job transition');
   });
+
+  it('records cancellation before marking a running job canceled', () => {
+    const requested = transitionJob(
+      { id: 'job-1', state: 'running', attempt: 1, maxAttempts: 3 },
+      { type: 'requestCancel' },
+      '2026-08-11T00:00:00.000Z'
+    );
+
+    expect(requested.state).toBe('cancel_requested');
+    expect(
+      transitionJob(requested, { type: 'cancel' }, '2026-08-11T00:00:01.000Z')
+    ).toMatchObject({ state: 'canceled', finishedAt: '2026-08-11T00:00:01.000Z' });
+  });
+
+  it('allows a failed job to be explicitly retried only within its retry bound', () => {
+    expect(
+      transitionJob(
+        { id: 'job-1', state: 'failed', attempt: 1, maxAttempts: 2 },
+        { type: 'retry' },
+        '2026-08-11T00:00:00.000Z'
+      )
+    ).toMatchObject({ state: 'queued', attempt: 2 });
+
+    expect(() =>
+      transitionJob(
+        { id: 'job-1', state: 'failed', attempt: 2, maxAttempts: 2 },
+        { type: 'retry' },
+        '2026-08-11T00:00:00.000Z'
+      )
+    ).toThrow('Invalid job transition');
+  });
 });
