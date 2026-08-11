@@ -26,8 +26,27 @@ describe('recoverable local jobs', () => {
     expect(enqueueLocalJob(database, { id: 'job-2', kind: 'index', payload: '{}', dedupeKey: 'asset-1', createdAt: '2026-08-11T00:00:01.000Z' }).id).toBe(first.id);
     expect(claimNextLocalJob(database, '2026-08-11T00:00:02.000Z')?.state).toBe('running');
     expect(requestCancelLocalJob(database, first.id)).toBe(true);
-    expect(reconcileInterruptedJobs(database)).toBe(1);
-    expect(database.all('SELECT state, cancel_requested FROM local_jobs WHERE id = ?;', [first.id])[0]).toMatchObject({ state: 'queued', cancel_requested: 1 });
+    expect(reconcileInterruptedJobs(database, '2026-08-11T00:00:03.000Z')).toBe(1);
+    expect(database.all('SELECT state, cancel_requested, finished_at FROM local_jobs WHERE id = ?;', [first.id])[0])
+      .toMatchObject({ state: 'canceled', cancel_requested: 1, finished_at: '2026-08-11T00:00:03.000Z' });
     await database.close();
+  });
+
+  it('finishes an interrupted cancellation instead of leaving it in an unclaimable queue state', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'vp-media-lab-job-'));
+    directories.push(directory);
+    const database = await openDatabase({ filePath: join(directory, 'media-lab.sqlite'), migrations: mediaLabMigrations });
+    enqueueLocalJob(database, { id: 'job-cancel', kind: 'index', payload: '{}', createdAt: '2026-08-11T00:00:00.000Z' });
+    expect(claimNextLocalJob(database, '2026-08-11T00:00:01.000Z')?.state).toBe('running');
+    expect(requestCancelLocalJob(database, 'job-cancel')).toBe(true);
+
+    reconcileInterruptedJobs(database, '2026-08-11T00:00:02.000Z');
+
+    try {
+      expect(database.all('SELECT state, cancel_requested, finished_at FROM local_jobs WHERE id = ?;', ['job-cancel'])[0])
+        .toMatchObject({ state: 'canceled', cancel_requested: 1, finished_at: '2026-08-11T00:00:02.000Z' });
+    } finally {
+      await database.close();
+    }
   });
 });

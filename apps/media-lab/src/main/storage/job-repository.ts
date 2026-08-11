@@ -8,7 +8,13 @@ export function enqueueLocalJob(database: MediaLabDatabase, input: { id: string;
   return database.transaction(() => { const existing = input.dedupeKey ? database.all('SELECT * FROM local_jobs WHERE dedupe_key = ?;', [input.dedupeKey])[0] : undefined; if (existing) return row(existing); database.run('INSERT INTO local_jobs (id, kind, state, created_at, payload, dedupe_key) VALUES (?, ?, \'queued\', ?, ?, ?);', [input.id, input.kind, input.createdAt, input.payload, input.dedupeKey ?? null]); return row(database.all('SELECT * FROM local_jobs WHERE id = ?;', [input.id])[0]!); });
 }
 
-export function reconcileInterruptedJobs(database: MediaLabDatabase): number { return Number(database.run("UPDATE local_jobs SET state = 'queued', started_at = NULL WHERE state IN ('running', 'cancel_requested');").changes); }
+export function reconcileInterruptedJobs(database: MediaLabDatabase, finishedAt: string): number {
+  return database.transaction(() => {
+    const recovered = database.run("UPDATE local_jobs SET state = 'queued', started_at = NULL WHERE state = 'running';");
+    const canceled = database.run("UPDATE local_jobs SET state = 'canceled', finished_at = ? WHERE state = 'cancel_requested';", [finishedAt]);
+    return Number(recovered.changes) + Number(canceled.changes);
+  });
+}
 
 export function claimNextLocalJob(database: MediaLabDatabase, startedAt: string): StoredLocalJob | null {
   return database.transaction(() => {
