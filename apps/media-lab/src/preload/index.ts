@@ -17,7 +17,8 @@ const api: VpMediaApi = {
     create: (input) => ipcRenderer.invoke('vp-media:projects:create', input),
     list: () => ipcRenderer.invoke('vp-media:projects:list'),
     get: (input) => ipcRenderer.invoke('vp-media:projects:get', input)
-  }
+  },
+  chat: { propose: (input) => ipcRenderer.invoke('vp-media:chat:propose', input) }
 };
 
 contextBridge.exposeInMainWorld('vpMedia', Object.freeze(api));

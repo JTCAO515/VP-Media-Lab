@@ -1,3 +1,5 @@
+import type { EditProposalV1 } from '@visepanda/media-lab-domain';
+
 export type AssetKind = 'owned' | 'reference';
 
 export interface PublicSettings {
@@ -55,5 +57,8 @@ export interface VpMediaApi {
     create(input: { title: string; language: 'en' | 'zh' | 'other' }): Promise<ProjectSummary>;
     list(): Promise<ProjectSummary[]>;
     get(input: { id: string }): Promise<ProjectStoryboard | null>;
+  };
+  chat: {
+    propose(input: { projectId: string; message: string }): Promise<EditProposalV1>;
   };
 }

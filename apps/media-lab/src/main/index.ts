@@ -7,6 +7,7 @@ import { openDatabase, type MediaLabDatabase } from './storage/database';
 import { mediaLabMigrations } from './storage/migrations';
 import { upsertMediaAsset } from './storage/asset-repository';
 import { createProjectWithStoryboard, getProjectWithStoryboard } from './storage/project-repository';
+import { QwenEditProvider } from './providers/qwen-edit-provider';
 import type { AssetKind, MediaAssetSummary, ProjectStoryboard, ProjectSummary, PublicSettings } from '../shared/contracts';
 
 let database: MediaLabDatabase;
@@ -27,6 +28,20 @@ function publicSettings(): PublicSettings {
     aiKeyConfigured: database.getSetting('ai_key_encrypted') !== null,
     monthlyBudgetCents: Number(database.getSetting('monthly_budget_cents') ?? '0')
   };
+}
+
+function readConfiguredAiKey(): string {
+  const encrypted = database.getSetting('ai_key_encrypted');
+  if (!encrypted || !safeStorage.isEncryptionAvailable()) throw new Error('AI_NOT_CONFIGURED');
+  return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+}
+
+function assetRightsById(): Record<string, { assetKind: AssetKind; rightsStatus: 'unknown' | 'owned' | 'licensed' | 'expired' | 'restricted'; rightsExpiresAt: null }> {
+  return Object.fromEntries(database.all('SELECT id, asset_kind, rights_status FROM media_assets;').map((row) => [String(row.id), {
+    assetKind: row.asset_kind as AssetKind,
+    rightsStatus: row.rights_status as 'unknown' | 'owned' | 'licensed' | 'expired' | 'restricted',
+    rightsExpiresAt: null
+  }]));
 }
 
 function assetRows(assetKind: AssetKind): MediaAssetSummary[] {
@@ -149,6 +164,18 @@ function registerIpc(): void {
     if (!input || typeof input.id !== 'string' || input.id.length === 0) throw new Error('INVALID_INPUT');
     const project = getProjectWithStoryboard(database, input.id);
     return project ? toProjectStoryboard(project) : null;
+  });
+  ipcMain.handle('vp-media:chat:propose', async (_event, input: { projectId: string; message: string }) => {
+    if (!input || typeof input.projectId !== 'string' || typeof input.message !== 'string' || input.message.trim().length < 1 || input.message.length > 2_000) {
+      throw new Error('INVALID_INPUT');
+    }
+    const project = getProjectWithStoryboard(database, input.projectId);
+    if (!project) throw new Error('PROJECT_NOT_FOUND');
+    const provider = new QwenEditProvider({ apiKey: readConfiguredAiKey() });
+    return provider.proposeEdit({
+      message: input.message.trim(), storyboard: project.storyboard, assetRights: assetRightsById(),
+      today: new Date().toISOString().slice(0, 10)
+    });
   });
   ipcMain.handle('vp-media:open-path', async (_event, path: string) => shell.openPath(path));
 }
