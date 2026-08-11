@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { openDatabase } from '../src/main/storage/database';
 import { mediaLabMigrations } from '../src/main/storage/migrations';
 import { upsertMediaAsset } from '../src/main/storage/asset-repository';
+import { createProjectWithStoryboard, getProjectWithStoryboard } from '../src/main/storage/project-repository';
 
 const temporaryDirectories: string[] = [];
 
@@ -18,7 +19,7 @@ describe('SQLite migrations', () => {
     temporaryDirectories.push(directory);
     const database = await openDatabase({ filePath: join(directory, 'media-lab.sqlite'), migrations: mediaLabMigrations });
 
-    expect(database.appliedMigrationIds()).toEqual(['001_core', '002_asset_locations']);
+    expect(database.appliedMigrationIds()).toEqual(['001_core', '002_asset_locations', '003_projects']);
     expect(database.all('SELECT path, asset_id FROM asset_locations;')).toEqual([]);
     await database.close();
   });
@@ -39,6 +40,25 @@ describe('SQLite migrations', () => {
     expect(database.all('SELECT path FROM asset_locations WHERE asset_id = ? ORDER BY path;', ['asset-1']).map((row) => row.path)).toEqual([
       'C:\\footage\\arrival.mp4', 'D:\\archive\\arrival-copy.mp4'
     ]);
+    await database.close();
+  });
+
+  it('persists a draft project and its versioned storyboard as one local editing unit', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'vp-media-lab-'));
+    temporaryDirectories.push(directory);
+    const database = await openDatabase({ filePath: join(directory, 'media-lab.sqlite'), migrations: mediaLabMigrations });
+    createProjectWithStoryboard(database, {
+      id: 'project-1', title: 'Payment before landing', createdAt: '2026-08-11T00:00:00.000Z',
+      storyboard: {
+        schemaVersion: 1, id: 'storyboard-1', projectId: 'project-1', evidencePackId: null, language: 'en',
+        beats: [{ id: 'beat-1', order: 0, durationMs: 5_000, purpose: 'hook', originalScript: '', onScreenText: '', sourceFactIds: [], candidateAssetIds: [], selectedAssetId: null, renderStatus: 'draft' }],
+        factualReview: 'not_required', originalityReview: 'required'
+      }
+    });
+
+    expect(getProjectWithStoryboard(database, 'project-1')).toMatchObject({
+      id: 'project-1', title: 'Payment before landing', storyboard: { id: 'storyboard-1', projectId: 'project-1' }
+    });
     await database.close();
   });
 

@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { openDatabase, type MediaLabDatabase } from './storage/database';
 import { mediaLabMigrations } from './storage/migrations';
 import { upsertMediaAsset } from './storage/asset-repository';
-import type { AssetKind, MediaAssetSummary, PublicSettings } from '../shared/contracts';
+import { createProjectWithStoryboard, getProjectWithStoryboard } from './storage/project-repository';
+import type { AssetKind, MediaAssetSummary, ProjectStoryboard, ProjectSummary, PublicSettings } from '../shared/contracts';
 
 let database: MediaLabDatabase;
 
@@ -36,6 +37,30 @@ function assetRows(assetKind: AssetKind): MediaAssetSummary[] {
     id: String(row.id), assetKind: row.asset_kind as AssetKind, name: String(row.name), path: String(row.path),
     contentHash: String(row.content_hash), rightsStatus: String(row.rights_status), createdAt: String(row.created_at)
   }));
+}
+
+function projectRows(): ProjectSummary[] {
+  return database.all('SELECT id, title, created_at FROM projects ORDER BY created_at DESC;').map((row) => ({
+    id: String(row.id), title: String(row.title), createdAt: String(row.created_at)
+  }));
+}
+
+function toProjectStoryboard(project: NonNullable<ReturnType<typeof getProjectWithStoryboard>>): ProjectStoryboard {
+  return {
+    id: project.id,
+    title: project.title,
+    createdAt: project.createdAt,
+    storyboard: {
+      schemaVersion: project.storyboard.schemaVersion,
+      id: project.storyboard.id,
+      projectId: project.storyboard.projectId,
+      language: project.storyboard.language,
+      beats: project.storyboard.beats.map((beat) => ({
+        id: beat.id, order: beat.order, durationMs: beat.durationMs, purpose: beat.purpose,
+        onScreenText: beat.onScreenText, selectedAssetId: beat.selectedAssetId
+      }))
+    }
+  };
 }
 
 function createWindow(): BrowserWindow {
@@ -100,6 +125,31 @@ function registerIpc(): void {
   ipcMain.handle('vp-media:jobs:list', () => database.all('SELECT id, kind, state, created_at FROM local_jobs ORDER BY created_at DESC;').map((row) => ({
     id: String(row.id), kind: String(row.kind), state: String(row.state), createdAt: String(row.created_at)
   })));
+  ipcMain.handle('vp-media:projects:create', (_event, input: { title: string; language: 'en' | 'zh' | 'other' }) => {
+    if (!input || typeof input.title !== 'string' || !['en', 'zh', 'other'].includes(input.language) || input.title.trim().length < 3 || input.title.trim().length > 120) {
+      throw new Error('INVALID_INPUT');
+    }
+    const projectId = randomUUID();
+    const now = new Date().toISOString();
+    const project = createProjectWithStoryboard(database, {
+      id: projectId, title: input.title.trim(), createdAt: now,
+      storyboard: {
+        schemaVersion: 1, id: randomUUID(), projectId, evidencePackId: null, language: input.language,
+        beats: [{
+          id: randomUUID(), order: 0, durationMs: 5_000, purpose: 'opening beat', originalScript: '', onScreenText: '',
+          sourceFactIds: [], candidateAssetIds: [], selectedAssetId: null, renderStatus: 'draft'
+        }],
+        factualReview: 'not_required', originalityReview: 'required'
+      }
+    });
+    return { id: project.id, title: project.title, createdAt: project.createdAt };
+  });
+  ipcMain.handle('vp-media:projects:list', () => projectRows());
+  ipcMain.handle('vp-media:projects:get', (_event, input: { id: string }) => {
+    if (!input || typeof input.id !== 'string' || input.id.length === 0) throw new Error('INVALID_INPUT');
+    const project = getProjectWithStoryboard(database, input.id);
+    return project ? toProjectStoryboard(project) : null;
+  });
   ipcMain.handle('vp-media:open-path', async (_event, path: string) => shell.openPath(path));
 }
 

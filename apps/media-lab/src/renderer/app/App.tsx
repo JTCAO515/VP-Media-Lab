@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { AssetKind, MediaAssetSummary, PublicSettings } from '../../shared/contracts';
+import type { AssetKind, MediaAssetSummary, ProjectStoryboard, ProjectSummary, PublicSettings } from '../../shared/contracts';
 
 type Page = 'Library' | 'Pattern Analysis' | 'Create' | 'Review & Export' | 'Settings';
 
 const pageDescriptions: Record<Page, string> = {
   Library: 'Keep owned/licensed production assets completely separate from references.',
   'Pattern Analysis': 'Extract reusable creative structure, never source wording or visuals.',
-  Create: 'Turn approved evidence and a Pattern Card into an original China-travel storyboard.',
+  Create: 'Start a local draft before using AI to propose an original storyboard.',
   'Review & Export': 'Correct the automated cut, review rights, then export a transparent bundle.',
   Settings: 'Local-only configuration. API keys are encrypted in Windows storage and never displayed.'
 };
@@ -32,10 +32,38 @@ function Library(): JSX.Element {
   </section>;
 }
 
-function PatternAnalysis(): JSX.Element { return <section className="split"><div className="preview-panel"><span className="eyebrow">REFERENCE ITEM</span><h2>Analyze a reference safely</h2><p>Import a video, screenshot, image, text, or URL metadata from Library. Media Lab extracts abstract hook, pacing, caption and CTA patterns.</p><div className="video-placeholder">Reference preview</div></div><div className="card"><span className="eyebrow">PATTERN CARD</span><h2>Originality requirements</h2><ul><li>Replace source wording, examples and visual assets.</li><li>Use only approved VisePanda evidence for factual claims.</li><li>Match every beat to owned/licensed media.</li></ul><button className="primary">Create from Pattern Card</button></div></section>; }
-function Create(): JSX.Element { return <section className="create-layout"><div className="card"><span className="eyebrow">CREATIVE BRIEF</span><h2>Build an execution-first story</h2><label>Topic<input placeholder="e.g. Payment setup before landing" /></label><div className="form-row"><label>Platform<select><option>TikTok</option><option>Instagram Reels</option><option>Facebook</option><option>Reddit</option></select></label><label>Language<select><option>English</option><option>Chinese</option></select></label></div><button className="primary">Generate original angles</button></div><div className="card"><span className="eyebrow">STORYBOARD</span><h2>Waiting for a Pattern Card</h2><p>When AI is configured, this panel will show evidence-aware beats, draft copy, timing and owned-asset candidates.</p></div></section>; }
-function ReviewExport(): JSX.Element { return <section className="review-layout"><div className="video-placeholder tall">Vertical preview · 9:16</div><div className="card"><span className="eyebrow">REVIEW GATE</span><h2>Export only after review</h2><div className="check">□ Every selected asset has current rights.</div><div className="check">□ Travel facts are supported by approved evidence.</div><div className="check">□ Reference content is not used in the render.</div><button className="primary" disabled>Export bundle</button></div></section>; }
-function Settings(): JSX.Element { const [settings, setSettings] = useState<PublicSettings | null>(null); const [key, setKey] = useState(''); const refresh = async () => setSettings(await window.vpMedia.settings.get()); useEffect(() => { void refresh(); }, []); return <section className="settings"><div className="card"><span className="eyebrow">LOCAL LIBRARY</span><h2>{settings?.libraryPath ?? 'No library folder selected'}</h2><button className="secondary" onClick={() => void window.vpMedia.settings.chooseLibrary().then(refresh)}>Choose library folder</button></div><div className="card"><span className="eyebrow">AI PROVIDER</span><h2>{settings?.aiKeyConfigured ? 'API key configured' : 'API key not configured'}</h2><p>Keys stay encrypted in Windows storage. They are never shown, exported or written to project files.</p><div className="key-row"><input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="Enter a newly generated Model Studio key" /><button className="primary" onClick={() => void window.vpMedia.settings.saveApiKey({ value: key }).then(() => { setKey(''); return refresh(); })}>Save locally</button></div></div></section>; }
+function PatternAnalysis(): JSX.Element {
+  return <section className="split"><div className="preview-panel"><span className="eyebrow">REFERENCE ITEM</span><h2>Analyze a reference safely</h2><p>Import a video, screenshot, image, text, or URL metadata from Library. Media Lab extracts abstract hook, pacing, caption and CTA patterns.</p><div className="video-placeholder">Reference preview</div></div><div className="card"><span className="eyebrow">PATTERN CARD</span><h2>Originality requirements</h2><ul><li>Replace source wording, examples and visual assets.</li><li>Use only approved VisePanda evidence for factual claims.</li><li>Match every beat to owned/licensed media.</li></ul><button className="primary" disabled>Create from Pattern Card</button></div></section>;
+}
+
+function Create(): JSX.Element {
+  const [title, setTitle] = useState('');
+  const [language, setLanguage] = useState<'en' | 'zh' | 'other'>('en');
+  const [created, setCreated] = useState<ProjectSummary | null>(null);
+  const [creating, setCreating] = useState(false);
+  const create = async () => {
+    setCreating(true);
+    try { setCreated(await window.vpMedia.projects.create({ title, language })); setTitle(''); }
+    finally { setCreating(false); }
+  };
+  return <section className="create-layout"><div className="card"><span className="eyebrow">CREATIVE BRIEF</span><h2>Start an execution-first story</h2><label>Topic<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Payment setup before landing" /></label><div className="form-row"><label>Platform<select disabled><option>TikTok</option></select></label><label>Language<select value={language} onChange={(event) => setLanguage(event.target.value as 'en' | 'zh' | 'other')}><option value="en">English</option><option value="zh">Chinese</option><option value="other">Other</option></select></label></div><button className="primary" disabled={creating || title.trim().length < 3} onClick={() => void create()}>{creating ? 'Creating local draft…' : 'Create local draft'}</button></div><div className="card"><span className="eyebrow">STORYBOARD</span><h2>{created ? 'Draft ready for Review' : 'No draft selected'}</h2><p>{created ? `“${created.title}” has one editable opening beat. Use Review & Export to refine it with the Copilot.` : 'Pattern-based AI creation is the next stage. A local draft never fabricates travel facts or asset matches.'}</p></div></section>;
+}
+
+function ReviewExport(): JSX.Element {
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [active, setActive] = useState<ProjectStoryboard | null>(null);
+  useEffect(() => { void window.vpMedia.projects.list().then(setProjects); }, []);
+  const selectProject = async (id: string) => setActive(await window.vpMedia.projects.get({ id }));
+  return <section className="review-layout"><div className="video-placeholder tall">Vertical preview · 9:16</div><div className="card"><span className="eyebrow">EDITING DRAFT</span><h2>{active?.title ?? 'Choose a local draft'}</h2>{projects.length === 0 ? <p>Create a local draft in Create before reviewing or asking the Copilot to propose edits.</p> : <select value={active?.id ?? ''} onChange={(event) => void selectProject(event.target.value)}><option value="">Select draft</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select>}{active && <p>{active.storyboard.beats.length} beat(s) · {active.storyboard.language.toUpperCase()} · edits remain drafts until confirmed.</p>}<span className="eyebrow">REVIEW GATE</span><div className="check">◉ Every selected asset has current rights.</div><div className="check">◉ Travel facts are supported by approved evidence.</div><div className="check">◉ Reference content is not used in the render.</div><button className="primary" disabled>Export bundle</button></div></section>;
+}
+
+function Settings(): JSX.Element {
+  const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [key, setKey] = useState('');
+  const refresh = async () => setSettings(await window.vpMedia.settings.get());
+  useEffect(() => { void refresh(); }, []);
+  return <section className="settings"><div className="card"><span className="eyebrow">LOCAL LIBRARY</span><h2>{settings?.libraryPath ?? 'No library folder selected'}</h2><button className="secondary" onClick={() => void window.vpMedia.settings.chooseLibrary().then(refresh)}>Choose library folder</button></div><div className="card"><span className="eyebrow">AI PROVIDER</span><h2>{settings?.aiKeyConfigured ? 'API key configured' : 'API key not configured'}</h2><p>Keys stay encrypted in Windows storage. They are never shown, exported or written to project files.</p><div className="key-row"><input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="Enter a newly generated Model Studio key" /><button className="primary" onClick={() => void window.vpMedia.settings.saveApiKey({ value: key }).then(() => { setKey(''); return refresh(); })}>Save locally</button></div></div></section>;
+}
 
 export function App(): JSX.Element {
   const [page, setPage] = useState<Page>('Library');

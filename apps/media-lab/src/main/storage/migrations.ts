@@ -28,5 +28,22 @@ export const mediaLabMigrations: Migration[] = [
       INSERT OR IGNORE INTO asset_locations (path, asset_id, observed_at, missing_at)
         SELECT path, id, created_at, NULL FROM media_assets;
     `
+  },
+  {
+    id: '003_projects',
+    sql: `
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS storyboards (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        id TEXT NOT NULL UNIQUE,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `
   }
 ];

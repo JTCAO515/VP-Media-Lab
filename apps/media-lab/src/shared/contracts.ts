@@ -23,6 +23,22 @@ export interface LocalJobSummary {
   createdAt: string;
 }
 
+export interface ProjectSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface ProjectStoryboard extends ProjectSummary {
+  storyboard: {
+    schemaVersion: 1;
+    id: string;
+    projectId: string;
+    language: 'en' | 'zh' | 'other';
+    beats: Array<{ id: string; order: number; durationMs: number; purpose: string; onScreenText: string; selectedAssetId: string | null }>;
+  };
+}
+
 export interface VpMediaApi {
   settings: {
     get(): Promise<PublicSettings>;
@@ -35,4 +51,9 @@ export interface VpMediaApi {
     list(input: { assetKind: AssetKind }): Promise<MediaAssetSummary[]>;
   };
   jobs: { list(): Promise<LocalJobSummary[]> };
+  projects: {
+    create(input: { title: string; language: 'en' | 'zh' | 'other' }): Promise<ProjectSummary>;
+    list(): Promise<ProjectSummary[]>;
+    get(input: { id: string }): Promise<ProjectStoryboard | null>;
+  };
 }

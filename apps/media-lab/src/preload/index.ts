@@ -12,7 +12,12 @@ const api: VpMediaApi = {
     import: (input) => ipcRenderer.invoke('vp-media:assets:import', input),
     list: (input) => ipcRenderer.invoke('vp-media:assets:list', input)
   },
-  jobs: { list: () => ipcRenderer.invoke('vp-media:jobs:list') }
+  jobs: { list: () => ipcRenderer.invoke('vp-media:jobs:list') },
+  projects: {
+    create: (input) => ipcRenderer.invoke('vp-media:projects:create', input),
+    list: () => ipcRenderer.invoke('vp-media:projects:list'),
+    get: (input) => ipcRenderer.invoke('vp-media:projects:get', input)
+  }
 };
 
 contextBridge.exposeInMainWorld('vpMedia', Object.freeze(api));
