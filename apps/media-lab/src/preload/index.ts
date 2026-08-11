@@ -5,7 +5,10 @@ const api: VpMediaApi = {
   settings: {
     get: () => ipcRenderer.invoke('vp-media:settings:get'),
     chooseLibrary: () => ipcRenderer.invoke('vp-media:settings:choose-library'),
-    saveApiKey: (input) => ipcRenderer.invoke('vp-media:settings:save-api-key', input)
+    saveApiKey: (input) => ipcRenderer.invoke('vp-media:settings:save-api-key', input),
+    deleteApiKey: () => ipcRenderer.invoke('vp-media:settings:delete-api-key'),
+    saveProviderConfig: (input) => ipcRenderer.invoke('vp-media:settings:save-provider-config', input),
+    testConnection: () => ipcRenderer.invoke('vp-media:settings:test-connection')
   },
   assets: {
     chooseFiles: () => ipcRenderer.invoke('vp-media:assets:choose-files'),

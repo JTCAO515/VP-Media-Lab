@@ -200,7 +200,7 @@ git commit -m "feat: persist confirmed storyboard revisions"
 - Produces: `SecretStore.save/delete/withSecret`, `ProviderConfigSchema`, and `settings.testConnection()`.
 - Guarantees: renderer never reads a secret; ciphertext is stored outside SQLite; endpoints must be HTTPS Alibaba Cloud hosts; a test call is explicit and usage-recorded.
 
-- [ ] **Step 1: Write failing secret and endpoint tests**
+- [x] **Step 1: Write failing secret and endpoint tests**
 
 ```ts
 it('never returns plaintext and rejects a non-Alibaba endpoint', async () => {
@@ -214,19 +214,19 @@ it('never returns plaintext and rejects a non-Alibaba endpoint', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify red**
+- [x] **Step 2: Run the tests to verify red**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- secret-store provider-config`
 
 Expected: FAIL because the modules do not exist.
 
-- [ ] **Step 3: Implement the bounded contracts**
+- [x] **Step 3: Implement the bounded contracts**
 
 Use Electron `safeStorage` through dependency injection. Store base64 ciphertext in `userData/secrets.json` using a `.partial` file and atomic rename. `withSecret` decrypts only for the callback and does not return the raw value through IPC. Validate `baseUrl` with `new URL()`, protocol `https:`, and hostname equal to `dashscope.aliyuncs.com` or ending `.maas.aliyuncs.com`.
 
 The connection test sends one bounded `qwen-flash` request containing no project data, returns `{ ok, model, latencyMs, errorCode }`, and writes an `AiUsageEvent`; it never echoes provider response headers or request authorization.
 
-- [ ] **Step 4: Verify focused and broad checks**
+- [x] **Step 4: Verify focused and broad checks**
 
 Run: `npm.cmd --prefix apps\media-lab run test -- secret-store provider-config qwen-edit-provider`
 

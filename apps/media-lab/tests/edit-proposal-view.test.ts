@@ -17,12 +17,12 @@ describe('edit proposal review details', () => {
         { type: 'regenerate_beat', beatId: 'beat-3', instruction: 'Use a practical example.' }
       ]
     })).toEqual([
-      'Beat beat-1: caption → “Pay before landing”',
-      'Beat beat-1: use source 1000–3000 ms',
-      'Beat beat-2: asset → asset-owned',
-      'Beat beat-2: move to position 1',
-      'Music volume → 35%',
-      'Beat beat-3: regenerate → “Use a practical example.”'
+      '节拍 beat-1：字幕改为“Pay before landing”',
+      '节拍 beat-1：使用原素材 1000–3000 毫秒',
+      '节拍 beat-2：替换素材为 asset-owned',
+      '节拍 beat-2：移动至第 1 位',
+      '音乐音量改为 35%',
+      '节拍 beat-3：按“Use a practical example.”重新生成'
     ]);
   });
 });

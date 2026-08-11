@@ -118,5 +118,28 @@ export const mediaLabMigrations: Migration[] = [
       CREATE INDEX pending_edit_proposals_project_index
         ON pending_edit_proposals(project_id, status, created_at);
     `
+  },
+  {
+    id: '007_ai_usage_events',
+    sql: `
+      CREATE TABLE ai_usage_events (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NULL REFERENCES projects(id) ON DELETE SET NULL,
+        operation TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        latency_ms INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        estimated_cost_micros INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('succeeded', 'failed')),
+        error_code TEXT NULL,
+        retry_count INTEGER NOT NULL
+      );
+      CREATE INDEX ai_usage_events_started_index ON ai_usage_events(started_at);
+      CREATE INDEX ai_usage_events_project_index ON ai_usage_events(project_id, started_at);
+    `
   }
 ];

@@ -30,7 +30,8 @@ describe('SQLite migrations', () => {
 
     expect(database.appliedMigrationIds()).toEqual([
       '001_core', '002_asset_locations', '003_projects', '004_storyboard_versions',
-      '004b_global_proposal_ids', '005_pending_edit_proposals', '006_discarded_edit_proposals'
+      '004b_global_proposal_ids', '005_pending_edit_proposals', '006_discarded_edit_proposals',
+      '007_ai_usage_events'
     ]);
     expect(database.all('SELECT path, asset_id FROM asset_locations;')).toEqual([]);
     await database.close();

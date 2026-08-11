@@ -37,6 +37,15 @@ export interface PublicSettings {
   libraryPath: string | null;
   aiKeyConfigured: boolean;
   monthlyBudgetCents: number;
+  providerBaseUrl: string;
+  providerRegion: string;
+}
+
+export interface ProviderConnectionTestResult {
+  ok: boolean;
+  model: string;
+  latencyMs: number;
+  errorCode: string | null;
 }
 
 export interface MediaAssetSummary {
@@ -83,6 +92,9 @@ export interface VpMediaApi {
     get(): Promise<PublicSettings>;
     chooseLibrary(): Promise<string | null>;
     saveApiKey(input: { value: string }): Promise<{ configured: boolean }>;
+    deleteApiKey(): Promise<{ configured: false }>;
+    saveProviderConfig(input: { baseUrl: string; region: string }): Promise<PublicSettings>;
+    testConnection(): Promise<ProviderConnectionTestResult>;
   };
   assets: {
     chooseFiles(): Promise<string[]>;

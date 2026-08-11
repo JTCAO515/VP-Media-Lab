@@ -16,6 +16,8 @@ import {
   storePendingEditProposal
 } from './storage/project-repository';
 import { QwenEditProvider } from './providers/qwen-edit-provider';
+import { createFileSecretStore, type SecretStore } from './security/secret-store';
+import { migrateLegacyDatabaseSecret, readProviderConfig, registerSettingsIpc } from './ipc/settings-ipc';
 import {
   ChatConfirmInputSchema,
   ChatDiscardInputSchema,
@@ -27,10 +29,10 @@ import {
   type MediaAssetSummary,
   type ProjectStoryboard,
   type ProjectSummary,
-  type PublicSettings
 } from '../shared/contracts';
 
 let database: MediaLabDatabase;
+let secretStore: SecretStore;
 
 function hashFile(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -40,20 +42,6 @@ function hashFile(path: string): Promise<string> {
     stream.once('error', reject);
     stream.once('end', () => resolve(hash.digest('hex')));
   });
-}
-
-function publicSettings(): PublicSettings {
-  return {
-    libraryPath: database.getSetting('library_path'),
-    aiKeyConfigured: database.getSetting('ai_key_encrypted') !== null,
-    monthlyBudgetCents: Number(database.getSetting('monthly_budget_cents') ?? '0')
-  };
-}
-
-function readConfiguredAiKey(): string {
-  const encrypted = database.getSetting('ai_key_encrypted');
-  if (!encrypted || !safeStorage.isEncryptionAvailable()) throw new Error('AI_NOT_CONFIGURED');
-  return safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
 }
 
 function assetRightsById(): Record<string, { assetKind: AssetKind; rightsStatus: 'unknown' | 'owned' | 'licensed' | 'expired' | 'restricted'; rightsExpiresAt: null }> {
@@ -122,20 +110,7 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
-  ipcMain.handle('vp-media:settings:get', () => publicSettings());
-  ipcMain.handle('vp-media:settings:choose-library', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    database.setSetting('library_path', result.filePaths[0]);
-    return result.filePaths[0];
-  });
-  ipcMain.handle('vp-media:settings:save-api-key', (_event, input: { value: string }) => {
-    if (typeof input?.value !== 'string' || input.value.trim().length < 12) throw new Error('INVALID_INPUT');
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('SECRET_STORAGE_UNAVAILABLE');
-    const encrypted = safeStorage.encryptString(input.value.trim()).toString('base64');
-    database.setSetting('ai_key_encrypted', encrypted);
-    return { configured: true };
-  });
+  registerSettingsIpc({ ipcMain, dialog, database, secretStore });
   ipcMain.handle('vp-media:assets:choose-files', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Media', extensions: ['mp4', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'jpg', 'jpeg', 'png', 'webp'] }] });
     return result.canceled ? [] : result.filePaths;
@@ -193,10 +168,13 @@ function registerIpc(): void {
     const input = ChatProposeInputSchema.parse(untrustedInput);
     const project = getProjectWithStoryboard(database, input.projectId);
     if (!project) throw new Error('PROJECT_NOT_FOUND');
-    const provider = new QwenEditProvider({ apiKey: readConfiguredAiKey() });
-    const proposed = await provider.proposeEdit({
-      message: input.message.trim(), storyboard: project.storyboard, assetRights: assetRightsById(),
-      today: new Date().toISOString().slice(0, 10)
+    const proposed = await secretStore.withSecret('model-studio', (apiKey) => {
+      const providerConfig = readProviderConfig(database);
+      const provider = new QwenEditProvider({ apiKey, endpoint: providerConfig.baseUrl, region: providerConfig.region });
+      return provider.proposeEdit({
+        message: input.message.trim(), storyboard: project.storyboard, assetRights: assetRightsById(),
+        today: new Date().toISOString().slice(0, 10)
+      });
     });
     const pending = storePendingEditProposal(database, {
       proposal: { ...proposed, id: randomUUID(), projectId: project.id },
@@ -228,6 +206,8 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   database = await openDatabase({ filePath: join(app.getPath('userData'), 'media-lab.sqlite'), migrations: mediaLabMigrations });
+  secretStore = await createFileSecretStore({ filePath: join(app.getPath('userData'), 'secrets.json'), safeStorage });
+  await migrateLegacyDatabaseSecret({ database, secretStore, safeStorage });
   pruneExpiredEditProposals(database, new Date(Date.now() - 30 * 24 * 60 * 60 * 1_000).toISOString());
   registerIpc();
   createWindow();

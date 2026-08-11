@@ -22,6 +22,7 @@ export interface MediaLabDatabase {
   appliedMigrationIds(): string[];
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;
+  deleteSetting(key: string): void;
   all(statement: string, parameters?: SQLInputValue[]): Array<Record<string, SQLOutputValue>>;
   run(statement: string, parameters?: SQLInputValue[]): StatementResultingChanges;
   transaction<T>(work: () => T): T;
@@ -110,6 +111,9 @@ export async function openDatabase({ filePath, migrations }: OpenDatabaseInput):
       database.prepare(
         'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;'
       ).run(key, value);
+    },
+    deleteSetting: (key) => {
+      database.prepare('DELETE FROM settings WHERE key = ?;').run(key);
     },
     all: (statement, parameters = []) => database.prepare(statement).all(...parameters),
     run: (statement, parameters = []) => database.prepare(statement).run(...parameters),
