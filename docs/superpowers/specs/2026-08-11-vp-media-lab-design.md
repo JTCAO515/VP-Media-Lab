@@ -1,7 +1,9 @@
 # VP Media Lab — Product Design
 
 Date: 2026-08-11
-Status: Approved direction; awaiting written-spec review
+Status: Superseded by `2026-08-11-vp-media-lab-jianying-handoff-design.md`
+
+> This document records the original standalone-editor direction. It is retained for decision history and must not be used as the active implementation baseline.
 
 ## 1. Product definition
 

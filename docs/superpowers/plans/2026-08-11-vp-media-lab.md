@@ -1,5 +1,7 @@
 # VP Media Lab 实施计划
 
+> **Status: Superseded.** This plan implements the former standalone editing direction. Do not execute it. The active product baseline is `docs/superpowers/specs/2026-08-11-vp-media-lab-jianying-handoff-design.md`; a replacement implementation plan will be written only after that specification is reviewed.
+
 > **供实施代理使用：** 必须逐任务执行、记录验证证据。此计划先于代码实施；任何涉及 VisePanda 对外事实、商业承诺、第三方账户、发布或密钥的变更，都须得到操作者另行授权。
 
 **目标：** 构建一个仅供 VisePanda 运营者使用的 Windows 本地桌面工作台，用自有/已授权素材和抽象创作模式，生成可人工核验的来华旅行原创内容及导出版权清单。
