@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AssetKind, MediaAssetSummary, PendingEditProposalView, ProjectStoryboard, ProjectSummary, ProviderConnectionTestResult, PublicSettings } from '../../shared/contracts';
 import { describeEditProposal } from './edit-proposal-view';
+import { GuideStepView } from '../features/guide/GuideStepView';
 
 type Page = 'Library' | 'Pattern Analysis' | 'Create' | 'Review & Export' | 'Settings';
 
@@ -54,17 +55,20 @@ function Create(): JSX.Element {
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState<'en' | 'zh' | 'other'>('en');
   const [created, setCreated] = useState<ProjectSummary | null>(null);
+  const [guide, setGuide] = useState<import('@visepanda/media-lab-domain').GuidedProductionRunV1 | null>(null);
   const [creating, setCreating] = useState(false);
   const create = async () => {
     setCreating(true);
     try {
-      setCreated(await window.vpMedia.projects.create({ title, language }));
+      const project = await window.vpMedia.projects.create({ title, language });
+      setCreated(project);
+      setGuide(await window.vpMedia.guide.createForProject({ id: project.id }));
       setTitle('');
     } finally {
       setCreating(false);
     }
   };
-  return <section className="create-layout"><div className="card"><span className="eyebrow">创作简报</span><h2>从可执行的旅行故事开始</h2><label>主题<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：落地前的支付准备" /></label><div className="form-row"><label>平台<select disabled><option>TikTok</option></select></label><label>语言<select value={language} onChange={(event) => setLanguage(event.target.value as 'en' | 'zh' | 'other')}><option value="en">英文</option><option value="zh">中文</option><option value="other">其他语言</option></select></label></div><button className="primary" disabled={creating || title.trim().length < 3} onClick={() => void create()}>{creating ? '正在创建本地草稿…' : '创建本地草稿'}</button></div><div className="card"><span className="eyebrow">分镜</span><h2>{created ? '草稿已可供审核' : '尚未选择草稿'}</h2><p>{created ? `“${created.title}”已创建一个可编辑的开场节拍。请在「审核与导出」中使用剪辑助手继续完善。` : '基于模式的 AI 创作将在下一阶段提供。本地草稿不会虚构旅行事实或素材匹配。'}</p></div></section>;
+  return <section className="create-layout"><div className="card"><span className="eyebrow">创作简报</span><h2>从可执行的旅行故事开始</h2><label>主题<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：落地前的支付准备" /></label><div className="form-row"><label>平台<select disabled><option>TikTok</option></select></label><label>语言<select value={language} onChange={(event) => setLanguage(event.target.value as 'en' | 'zh' | 'other')}><option value="en">英文</option><option value="zh">中文</option><option value="other">其他语言</option></select></label></div><button className="primary" disabled={creating || title.trim().length < 3} onClick={() => void create()}>{creating ? '正在创建本地草稿…' : '创建本地草稿'}</button></div><div>{guide ? <GuideStepView run={guide} onEvent={(event) => void window.vpMedia.guide.transition({ runId: guide.id, event }).then(setGuide)} /> : <div className="card"><span className="eyebrow">分镜</span><h2>{created ? '草稿已可供审核' : '尚未选择草稿'}</h2><p>{created ? `“${created.title}”已创建一个可编辑的开场节拍。` : '创建草稿后会显示逐步制作清单。'}</p></div>}</div></section>;
 }
 
 function ReviewExport(): JSX.Element {

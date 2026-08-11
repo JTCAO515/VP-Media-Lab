@@ -26,6 +26,11 @@ const api: VpMediaApi = {
     propose: (input) => ipcRenderer.invoke('vp-media:chat:propose', input),
     confirm: (input) => ipcRenderer.invoke('vp-media:chat:confirm', input),
     discard: (input) => ipcRenderer.invoke('vp-media:chat:discard', input)
+  },
+  guide: {
+    getForProject: (input) => ipcRenderer.invoke('vp-media:guide:get-for-project', input),
+    createForProject: (input) => ipcRenderer.invoke('vp-media:guide:create-for-project', input),
+    transition: (input) => ipcRenderer.invoke('vp-media:guide:transition', input)
   }
 };
 

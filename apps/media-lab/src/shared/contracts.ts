@@ -1,4 +1,4 @@
-import type { EditProposalV1 } from '@visepanda/media-lab-domain';
+import type { EditProposalV1, GuideEvent, GuidedProductionRunV1 } from '@visepanda/media-lab-domain';
 import { z } from 'zod';
 
 const IdSchema = z.string().trim().min(1).max(200);
@@ -112,5 +112,10 @@ export interface VpMediaApi {
     propose(input: ChatProposeInput): Promise<PendingEditProposalView>;
     confirm(input: ChatConfirmInput): Promise<ProjectStoryboard>;
     discard(input: ChatDiscardInput): Promise<{ discarded: true }>;
+  };
+  guide: {
+    getForProject(input: ProjectGetInput): Promise<GuidedProductionRunV1 | null>;
+    createForProject(input: ProjectGetInput): Promise<GuidedProductionRunV1>;
+    transition(input: { runId: string; event: GuideEvent }): Promise<GuidedProductionRunV1>;
   };
 }

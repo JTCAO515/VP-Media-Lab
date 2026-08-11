@@ -18,6 +18,9 @@ import {
 import { QwenEditProvider } from './providers/qwen-edit-provider';
 import { createFileSecretStore, type SecretStore } from './security/secret-store';
 import { migrateLegacyDatabaseSecret, readProviderConfig, registerSettingsIpc } from './ipc/settings-ipc';
+import { createGuideRun, getGuideRunForProject, transitionStoredGuideRun } from './storage/guide-repository';
+import { GuideEventSchema } from '@visepanda/media-lab-domain';
+import { z } from 'zod';
 import {
   ChatConfirmInputSchema,
   ChatDiscardInputSchema,
@@ -152,6 +155,17 @@ function registerIpc(): void {
       }
     });
     return { id: project.id, title: project.title, createdAt: project.createdAt };
+  });
+  ipcMain.handle('vp-media:guide:get-for-project', (_event, untrustedInput: unknown) => getGuideRunForProject(database, ProjectGetInputSchema.parse(untrustedInput).id));
+  ipcMain.handle('vp-media:guide:create-for-project', (_event, untrustedInput: unknown) => {
+    const projectId = ProjectGetInputSchema.parse(untrustedInput).id;
+    const existing = getGuideRunForProject(database, projectId);
+    if (existing) return existing;
+    return createGuideRun(database, { id: randomUUID(), projectId, createdAt: new Date().toISOString(), template: { schemaVersion: 1, id: 'vp-video-guided-production', version: 1, title: 'VP 视频制作步骤', steps: [{ id: 'confirm-brief', title: '确认创作主题', instruction: '确认本次视频主题、语言和目标平台。', why: '主题决定脚本、素材和剪映设置。', expectedResult: '主题已确定。', evidenceMode: 'manual', optional: false }, { id: 'prepare-assets', title: '准备自有素材', instruction: '在素材库选择自有或已授权的镜头。', why: '参考素材不可进入最终成片。', expectedResult: '素材已准备。', evidenceMode: 'manual', optional: false }, { id: 'edit-in-jianying', title: '在剪映完成剪辑', instruction: '按分镜导入剪映，完成裁剪、字幕和音乐。', why: '剪映负责专业剪辑与导出。', expectedResult: '剪映草稿已完成。', evidenceMode: 'manual', optional: false }, { id: 'record-publication', title: '记录手动发布结果', instruction: '手动发布后记录链接和表现。', why: '用于复盘内容效果。', expectedResult: '发布结果已记录。', evidenceMode: 'manual', optional: true }] } });
+  });
+  ipcMain.handle('vp-media:guide:transition', (_event, untrustedInput: unknown) => {
+    const input = z.object({ runId: z.string().min(1), event: GuideEventSchema }).strict().parse(untrustedInput);
+    return transitionStoredGuideRun(database, input);
   });
   ipcMain.handle('vp-media:projects:list', () => projectRows());
   ipcMain.handle('vp-media:projects:get', (_event, untrustedInput: unknown) => {
